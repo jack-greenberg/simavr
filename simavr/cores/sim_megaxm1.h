@@ -34,6 +34,7 @@
 #include "avr_adc.h"
 #include "avr_timer.h"
 #include "avr_spi.h"
+#include "avr_can.h"
 
 void mxm1_init(struct avr_t * avr);
 void mxm1_reset(struct avr_t * avr);
@@ -52,6 +53,7 @@ struct mcu_t {
 	avr_adc_t		adc;
 	avr_timer_t		timer0,timer1;
 	avr_spi_t		spi;
+    avr_can_t       can;
 };
 
 #ifdef SIM_CORENAME
@@ -152,6 +154,38 @@ const struct mcu_t SIM_CORENAME = {
 			/* .udrc doesn't exist in the LIN UART */
 		},
 	},
+
+    .can = {
+        .txbsy = AVR_IO_REGBIT(CANGSTA, TXBSY),
+        .rxbsy = AVR_IO_REGBIT(CANGSTA, RXBSY),
+
+        .canmsg = CANMSG,
+        .dlc = AVR_IO_REGBITS(CANCDMOB, 0, 0xF),
+        .mob = AVR_IO_REGBITS(CANPAGE, MOBNB0, 0xF),
+        .ainc = AVR_IO_REGBIT(CANPAGE, AINC),
+        .indx = AVR_IO_REGBITS(CANPAGE, 0, 0x7),
+        .canen2 = CANEN2,
+
+        .canidt1 = CANIDT1,
+        .canidt2 = CANIDT2,
+        .canidt3 = CANIDT3,
+        .canidt4 = CANIDT4,
+
+        .canidm1 = CANIDM1,
+        .canidm2 = CANIDM2,
+        .canidm3 = CANIDM3,
+        .canidm4 = CANIDM4,
+
+        .mode = AVR_IO_REGBITS(CANCDMOB, CONMOB0, 0x3),
+        .mobs = {
+            [0] = CANMOB(0),
+            [1] = CANMOB(1),
+            [2] = CANMOB(2),
+            [3] = CANMOB(3),
+            [4] = CANMOB(4),
+            [5] = CANMOB(5),
+        },
+    },
 	.adc = {
 		.r_admux = ADMUX,
 		.mux = { AVR_IO_REGBIT(ADMUX, MUX0), AVR_IO_REGBIT(ADMUX, MUX1),

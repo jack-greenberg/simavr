@@ -40,6 +40,7 @@ void mxm1_init(struct avr_t * avr)
 	avr_timer_init(avr, &mcu->timer0);
 	avr_timer_init(avr, &mcu->timer1);
 	avr_spi_init(avr, &mcu->spi);
+    avr_can_init(avr, &mcu->can);
 }
 
 void mxm1_reset(struct avr_t * avr)
