@@ -160,11 +160,11 @@ const struct mcu_t SIM_CORENAME = {
         .rxbsy = AVR_IO_REGBIT(CANGSTA, RXBSY),
 
         .canmsg = CANMSG,
-        .dlc = AVR_IO_REGBITS(CANCDMOB, 0, 0xF),
+        .dlc = AVR_IO_REGBITS(CANCDMOB, DLC0, 0xF),
         .mob = AVR_IO_REGBITS(CANPAGE, MOBNB0, 0xF),
         .ainc = AVR_IO_REGBIT(CANPAGE, AINC),
         .indx = AVR_IO_REGBITS(CANPAGE, 0, 0x7),
-        .canen2 = CANEN2,
+        .cancdmob = CANCDMOB,
 
         .canidt1 = CANIDT1,
         .canidt2 = CANIDT2,

@@ -41,7 +41,6 @@ static void avr_can_write_data(struct avr_t * avr, avr_io_addr_t addr, uint8_t v
     assert(curr_mob < 6);
 
     uint8_t indx = avr_regbit_get(avr, p->indx);
-    // p->mobs[curr_mob].data[indx] = v;
 
     if (avr_regbit_get(avr, p->ainc)) {
         indx = (indx + 1) % 8;
@@ -62,6 +61,23 @@ static void avr_can_write_cfg(struct avr_t * avr, avr_io_addr_t addr, uint8_t v,
     uint8_t curr_mob = avr_regbit_get(avr, p->mob);
     assert(curr_mob < 6);
 
+    avr_core_watch_write(avr, addr, v);
+
+    // Save data in registers to MOb
+    uint8_t dlc = avr_regbit_get(avr, p->dlc);
+    uint8_t mode = avr_regbit_get(avr, p->mode);
+    uint8_t indx = avr_regbit_get(avr, p->indx);
+    uint16_t id = (avr->data[p->canidt1] << 3) | 
+                        (avr->data[p->canidt2] >> 5);
+    uint16_t msk = (avr->data[p->canidm1] << 3) | 
+                        (avr->data[p->canidm2] >> 5);
+
+    p->mobs[curr_mob].dlc = dlc;
+    p->mobs[curr_mob].mode = mode;
+    p->mobs[curr_mob].data_indx = indx;
+    p->mobs[curr_mob].id = id;
+    p->mobs[curr_mob].mask = msk;
+
     uint8_t masked_v = (v >> 6) & 0x3;
 
     switch (masked_v) {
@@ -70,27 +86,23 @@ static void avr_can_write_cfg(struct avr_t * avr, avr_io_addr_t addr, uint8_t v,
         } break;
         case MOB_MODE_ENABLE_TX: {
             // Check if MOb is enabled
-            if (avr_regbit_get(avr, p->mobs[curr_mob].enabled)) {
-                AVR_LOG(avr, LOG_TRACE, "CAN: transmit id=0x%X dlc=0x%X",
-                        p->mobs[curr_mob].id,
-                        p->mobs[curr_mob].dlc);
+            AVR_LOG(avr, LOG_TRACE, "CAN: transmit id=0x%X dlc=0x%X",
+                    p->mobs[curr_mob].id,
+                    p->mobs[curr_mob].dlc);
 
-                avr_core_watch_write(avr, addr, v); // TODO: mask
-
-                // Set txbsy, set timer that will disable it
-                avr_regbit_set(avr, p->txbsy);
-                avr_raise_irq(p->io.irq + CAN_IRQ_TX, 1);
-            }
+            // Set txbsy, set timer that will disable it
+            avr_regbit_set(avr, p->txbsy);
+            avr_raise_irq(p->io.irq + CAN_IRQ_TX, curr_mob);
         } break;
         case MOB_MODE_ENABLE_RX: {
             // Check if MOb is enabled
-            if (avr_regbit_get(avr, p->mobs[curr_mob].enabled)) {
-                AVR_LOG(avr, LOG_TRACE, "CAN: receive id=0x%X msk=0x%X",
-                        p->mobs[curr_mob].id,
-                        p->mobs[curr_mob].mask);
+            // if (avr_regbit_get(avr, p->mobs[curr_mob].enabled)) {
+            AVR_LOG(avr, LOG_TRACE, "CAN: receive id=0x%X msk=0x%X",
+                    p->mobs[curr_mob].id,
+                    p->mobs[curr_mob].mask);
 
                 // can_receive(); // Wait for ioctl? idk yet
-            }
+            // }
         } break;
         case MOB_MODE_ENABLE_FRAME_BUFFER_RX: {
             // unimplemented!
@@ -110,41 +122,37 @@ static void avr_can_write_mobnb(struct avr_t * avr, avr_io_addr_t addr, uint8_t 
     uint8_t prev_mobnb = avr_regbit_get(avr, p->mob);
     uint8_t new_mobnb = (v >> 4) & 0x7;
 
-    if (new_mobnb != prev_mobnb) {
-        /*
-         * Save prev values
-         *
-         * TODO: Data?
-         */
-        uint8_t prev_dlc = avr_regbit_get(avr, p->dlc);
-        uint8_t prev_mode = avr_regbit_get(avr, p->mode);
-        uint8_t prev_indx = avr_regbit_get(avr, p->indx);
-        uint16_t prev_id = (avr->data[p->canidt1] << 3) | 
-                            (avr->data[p->canidt2] >> 5);
-        uint16_t prev_msk = (avr->data[p->canidm1] << 3) | 
-                            (avr->data[p->canidm2] >> 5);
+    /*
+     * Save prev values
+     */
+    uint8_t prev_dlc = avr->data[p->cancdmob] & 0xF;
+    uint8_t prev_mode = (avr->data[p->cancdmob] >> 6) & 0x3;
+    uint8_t prev_indx = avr_regbit_get(avr, p->indx);
+    uint16_t prev_id = (avr->data[p->canidt1] << 3) | 
+                        (avr->data[p->canidt2] >> 5);
+    uint16_t prev_msk = (avr->data[p->canidm1] << 3) | 
+                        (avr->data[p->canidm2] >> 5);
 
-        p->mobs[prev_mobnb].dlc = prev_dlc;
-        p->mobs[prev_mobnb].mode = prev_mode;
-        p->mobs[prev_mobnb].data_indx = prev_indx;
-        p->mobs[prev_mobnb].id = prev_id;
-        p->mobs[prev_mobnb].mask = prev_msk;
+    p->mobs[prev_mobnb].dlc = prev_dlc;
+    p->mobs[prev_mobnb].mode = prev_mode;
+    p->mobs[prev_mobnb].data_indx = prev_indx;
+    p->mobs[prev_mobnb].id = prev_id;
+    p->mobs[prev_mobnb].mask = prev_msk;
 
-        /*
-         * Update new values in the background
-         */
-        avr_can_mob_t new_mob = p->mobs[new_mobnb];
+    /*
+     * Update new values in the background
+     */
+    avr_can_mob_t new_mob = p->mobs[new_mobnb];
 
-        avr_regbit_setto(avr, p->dlc, new_mob.dlc);
-        avr_regbit_setto(avr, p->mode, new_mob.mode);
-        avr_regbit_setto(avr, p->indx, new_mob.data_indx);
-        avr->data[p->canidt1] = new_mob.id >> 3;
-        avr->data[p->canidt2] = new_mob.id << 5;
-        avr->data[p->canidm1] = new_mob.mask >> 3;
-        avr->data[p->canidm2] = new_mob.mask << 5;
+    avr_regbit_setto(avr, p->dlc, new_mob.dlc);
+    avr_regbit_setto(avr, p->mode, new_mob.mode);
+    avr_regbit_setto(avr, p->indx, new_mob.data_indx);
+    avr->data[p->canidt1] = new_mob.id >> 3;
+    avr->data[p->canidt2] = new_mob.id << 5;
+    avr->data[p->canidm1] = new_mob.mask >> 3;
+    avr->data[p->canidm2] = new_mob.mask << 5;
 
-        avr_core_watch_write(avr, addr, v);
-    }
+    avr_core_watch_write(avr, addr, v);
 
     avr_raise_irq(p->io.irq + CAN_IRQ_MOBNB, new_mobnb);
 }
@@ -181,8 +189,7 @@ static int avr_can_ioctl(struct avr_io_t * port, uint32_t ctl, void * io_param)
                 avr_can_mob_t mob = can->mobs[i];
                 avr_can_frame_t* frame = (avr_can_frame_t*)io_param;
 
-                if ((mob.mode == MOB_MODE_ENABLE_RX) && 
-                    (avr_regbit_get(avr, mob.enabled))) {
+                if (mob.mode == MOB_MODE_ENABLE_RX) {
 
                     // Check for match with ID and mask
                     if ((frame->id & mob.mask) == (mob.id & mob.mask)) {
@@ -193,6 +200,7 @@ static int avr_can_ioctl(struct avr_io_t * port, uint32_t ctl, void * io_param)
                         avr_regbit_setto(avr, can->dlc, frame->dlc);
                         avr->data[can->canidt1] = frame->id >> 3;
                         avr->data[can->canidt2] = frame->id << 5;
+                        st = 0;
                         break;
                     } else {
                         continue;
@@ -201,11 +209,13 @@ static int avr_can_ioctl(struct avr_io_t * port, uint32_t ctl, void * io_param)
             }
         } break;
         case AVR_IOCTL_CAN_SEND: {
-            // Used when device sends a CAN frame. Basically check for sent
-            // messages
-            // Get current MOb, get data and ID and DLC, store in io_param, exit
-            // Maybe it should be AVR_IOCTL_CAN_GET_SEND_IRQ(_mobnb)?
-            // success
+            avr_can_frame_t* frame = (avr_can_frame_t*) io_param;
+            avr_can_mob_t mob = can->mobs[frame->mobnb];
+
+            memcpy(frame->data, mob.data, mob.dlc);
+            frame->dlc = mob.dlc;
+            frame->id = mob.id;
+            st = 0;
         } break;
         default: {
 
@@ -232,7 +242,7 @@ void avr_can_init(avr_t * avr, avr_can_t * p) {
     avr_io_setirqs(&p->io, AVR_IOCTL_CAN_GETIRQ(), CAN_IRQ_COUNT, NULL);
 
 	avr_register_io_write(avr, p->canmsg, avr_can_write_data, p);
-	avr_register_io_write(avr, p->mode.reg, avr_can_write_cfg, p);
+	avr_register_io_write(avr, p->dlc.reg, avr_can_write_cfg, p);
 	avr_register_io_write(avr, p->mob.reg, avr_can_write_mobnb, p);
 	// avr_register_io_read(avr, p->r_spdr, avr_spi_read, p);
 }

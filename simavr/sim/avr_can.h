@@ -50,7 +50,7 @@ typedef struct {
     uint8_t mobnb;
     uint16_t id;
     uint16_t mask;
-    uint8_t* data;
+    uint8_t data[8];
     uint8_t dlc;
 }  avr_can_frame_t;
 
@@ -90,7 +90,7 @@ typedef struct avr_can_t {
     avr_regbit_t mob;
 
     avr_io_addr_t canmsg; // Data
-    avr_io_addr_t canen2;
+    avr_io_addr_t cancdmob;
 
     // MOb specific
     avr_regbit_t mode;
